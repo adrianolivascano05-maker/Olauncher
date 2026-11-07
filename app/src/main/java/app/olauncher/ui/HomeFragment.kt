@@ -42,6 +42,7 @@ import app.olauncher.helper.openCameraApp
 import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
 import app.olauncher.helper.showToast
+import app.olauncher.helper.HomeWidgetHost
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
 import java.text.SimpleDateFormat
@@ -56,6 +57,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+    private var shownWidgetId = HomeWidgetHost.NO_WIDGET
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
@@ -80,6 +82,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     override fun onResume() {
         super.onResume()
         populateHomeScreen(false)
+        populateWidget()
         viewModel.isOlauncherDefault()
         if (prefs.showStatusBar) showStatusBar()
         else hideStatusBar()
@@ -181,6 +184,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
         viewModel.refreshHome.observe(viewLifecycleOwner) {
             populateHomeScreen(it)
+            populateWidget()
         }
         viewModel.isOlauncherDefault.observe(viewLifecycleOwner, Observer {
             if (it != true) {
@@ -255,7 +259,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     }
 
     private fun setHomeAlignment(horizontalGravity: Int = prefs.homeAlignment) {
-        val verticalGravity = if (prefs.homeBottomAlignment) Gravity.BOTTOM else Gravity.CENTER_VERTICAL
+        // With a widget above them the apps sit at the bottom so the two never overlap
+        val verticalGravity =
+            if (prefs.homeBottomAlignment || binding.homeWidgetContainer.isVisible) Gravity.BOTTOM
+            else Gravity.CENTER_VERTICAL
         binding.homeAppsLayout.gravity = horizontalGravity or verticalGravity
         binding.dateTimeLayout.gravity = horizontalGravity
         binding.homeApp1.gravity = horizontalGravity
@@ -266,6 +273,50 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.homeApp6.gravity = horizontalGravity
         binding.homeApp7.gravity = horizontalGravity
         binding.homeApp8.gravity = horizontalGravity
+    }
+
+    private fun populateWidget() {
+        val context = context ?: return
+        val widgetId = prefs.homeWidgetId
+        if (widgetId == HomeWidgetHost.NO_WIDGET) {
+            clearWidget()
+            return
+        }
+        if (widgetId == shownWidgetId && binding.homeWidgetContainer.childCount > 0) return
+
+        val hostView = HomeWidgetHost.createView(context, widgetId)
+        if (hostView == null) {
+            // The widget's app was uninstalled or the id was never bound: forget it
+            HomeWidgetHost.delete(context, widgetId)
+            prefs.homeWidgetId = HomeWidgetHost.NO_WIDGET
+            clearWidget()
+            return
+        }
+
+        binding.homeWidgetContainer.removeAllViews()
+        binding.homeWidgetContainer.addView(
+            hostView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+        binding.homeWidgetContainer.isVisible = true
+        shownWidgetId = widgetId
+
+        // Tell the provider the size it is drawn at, so widgets like Calendar pick the right layout
+        val density = resources.displayMetrics.density
+        val lp = binding.homeWidgetContainer.layoutParams as ViewGroup.MarginLayoutParams
+        val widthDp = ((resources.displayMetrics.widthPixels - lp.leftMargin - lp.rightMargin) / density).toInt()
+        val heightDp = (lp.height / density).toInt()
+        hostView.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
+
+        setHomeAlignment()
+    }
+
+    private fun clearWidget() {
+        if (binding.homeWidgetContainer.childCount == 0 && !binding.homeWidgetContainer.isVisible) return
+        binding.homeWidgetContainer.removeAllViews()
+        binding.homeWidgetContainer.isVisible = false
+        shownWidgetId = HomeWidgetHost.NO_WIDGET
+        setHomeAlignment()
     }
 
     private fun populateDateTime() {

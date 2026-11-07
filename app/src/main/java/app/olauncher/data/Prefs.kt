@@ -24,6 +24,7 @@ class Prefs(context: Context) {
     private val HOME_BOTTOM_ALIGNMENT = "HOME_BOTTOM_ALIGNMENT"
     private val APP_LABEL_ALIGNMENT = "APP_LABEL_ALIGNMENT"
     private val STATUS_BAR = "STATUS_BAR"
+    private val HOME_WIDGET_ID = "HOME_WIDGET_ID"
     private val DATE_TIME_VISIBILITY = "DATE_TIME_VISIBILITY"
     private val SWIPE_LEFT_ENABLED = "SWIPE_LEFT_ENABLED"
     private val SWIPE_RIGHT_ENABLED = "SWIPE_RIGHT_ENABLED"
@@ -179,6 +180,11 @@ class Prefs(context: Context) {
     var showStatusBar: Boolean
         get() = prefs.getBoolean(STATUS_BAR, false)
         set(value) = prefs.edit { putBoolean(STATUS_BAR, value).apply() }
+
+    /** AppWidget id of the widget shown on the home screen, -1 when there is none. */
+    var homeWidgetId: Int
+        get() = prefs.getInt(HOME_WIDGET_ID, -1)
+        set(value) = prefs.edit { putInt(HOME_WIDGET_ID, value) }
 
     var dateTimeVisibility: Int
         get() = prefs.getInt(DATE_TIME_VISIBILITY, Constants.DateTime.ON)

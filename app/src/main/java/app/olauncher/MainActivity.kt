@@ -24,6 +24,7 @@ import androidx.navigation.findNavController
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.ActivityMainBinding
+import app.olauncher.helper.HomeWidgetHost
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.hasBeenDays
 import app.olauncher.helper.hasBeenHours
@@ -128,6 +129,11 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         restartLauncherOrCheckTheme()
+        try {
+            HomeWidgetHost.get(this).startListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onResume() {
@@ -169,6 +175,11 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         isResumed = false
         backToHomeScreen()
+        try {
+            HomeWidgetHost.get(this).stopListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         super.onStop()
     }
 

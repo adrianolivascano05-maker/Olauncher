@@ -4,4 +4,6 @@
     <dimen name="alphabet_recycler_margin_end">10dp</dimen>
     <dimen name="alphabet_recycler_margin_start">320dp</dimen>
     <dimen name="dialog_blur_behind_radius">4dp</dimen>
+    <dimen name="home_widget_height">280dp</dimen>
+    <dimen name="home_widget_margin_top">150dp</dimen>
 </resources>

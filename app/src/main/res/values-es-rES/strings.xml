@@ -124,6 +124,9 @@
     <string name="learn_more">Más información</string>
     <string name="did_you_know">¿Lo sabías?</string>
     <string name="screen_time">Tiempo de pantalla</string>
+    <string name="calendar_widget">Widget de calendario</string>
+    <string name="widget_removed">Widget quitado</string>
+    <string name="widget_picker_unavailable">No se pudo abrir el selector de widgets</string>
     <string name="leave_a_review">Dejar una reseña</string>
     <string name="review_message">Olauncher es gratis y siempre lo será. No tiene anuncios, no recopila datos y reduce tu tiempo de pantalla, lo que se traduce en una vida más saludable.\n\nEsperamos que lo disfrutes. Cuéntanos qué te parece.</string>
     <string name="alignment_changed">Alineación cambiada ✅</string>

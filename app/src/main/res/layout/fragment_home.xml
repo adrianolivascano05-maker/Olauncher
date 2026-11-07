@@ -72,6 +72,15 @@
         tools:text="2h 11m"
         tools:visibility="visible" />
 
+    <!-- Home widget, e.g. Google Calendar's day view. Filled by HomeFragment.populateWidget -->
+    <FrameLayout
+        android:id="@+id/homeWidgetContainer"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/home_widget_height"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="@dimen/home_widget_margin_top"
+        android:visibility="gone" />
+
     <!-- Home apps-->
     <LinearLayout
         android:id="@+id/homeAppsLayout"

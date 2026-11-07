@@ -1,6 +1,8 @@
 package app.olauncher.ui
 
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,6 +18,7 @@ import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.lifecycle.ViewModelProvider
@@ -28,6 +31,7 @@ import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogNotWorkingBinding
 import app.olauncher.databinding.DialogTextSizeBinding
 import app.olauncher.databinding.FragmentSettingsBinding
+import app.olauncher.helper.HomeWidgetHost
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.createDialog
 import app.olauncher.helper.getColorFromAttr
@@ -58,6 +62,38 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
     private val showPentastic = System.currentTimeMillis() % 2 == 0L
+
+    /** Widget id allocated for a pick in progress; freed again if the pick is cancelled. */
+    private var pendingWidgetId = HomeWidgetHost.NO_WIDGET
+
+    private val pickWidget = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val widgetId = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId) ?: pendingWidgetId
+        val info = if (result.resultCode == Activity.RESULT_OK) HomeWidgetHost.providerInfo(requireContext(), widgetId) else null
+        if (info == null) {
+            discardPendingWidget(widgetId)
+            return@registerForActivityResult
+        }
+        pendingWidgetId = widgetId
+        val configure = info.configure
+        if (configure == null) {
+            saveCalendarWidget(widgetId)
+            return@registerForActivityResult
+        }
+        try {
+            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE)
+                .setComponent(configure)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            configureWidget.launch(intent)
+        } catch (e: Exception) {
+            // Configuration screen not reachable from here: use the widget as it is
+            saveCalendarWidget(widgetId)
+        }
+    }
+
+    private val configureWidget = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) saveCalendarWidget(pendingWidgetId)
+        else discardPendingWidget(pendingWidgetId)
+    }
     private var dialog: OlDialog? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -81,6 +117,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateProMessage()
         populateKeyboardText()
         populateScreenTimeOnOff()
+        populateCalendarWidget()
         populateLockSettings()
         // Home button for recents feature disabled
         // populateHomeButtonRecents()
@@ -105,6 +142,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.olauncherHiddenApps -> showHiddenApps()
             R.id.moreFeatures -> viewModel.showDialog.postValue(Constants.Dialog.PRO_MESSAGE)
             R.id.screenTimeOnOff -> viewModel.showDialog.postValue(Constants.Dialog.DIGITAL_WELLBEING)
+            R.id.calendarWidget -> pickCalendarWidget()
             R.id.appInfo -> openAppInfo(requireContext(), Process.myUserHandle(), BuildConfig.APPLICATION_ID)
             R.id.setLauncher -> viewModel.resetLauncherLiveData.call()
             R.id.toggleLock -> toggleLockMode()
@@ -155,6 +193,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             }
 
             R.id.dailyWallpaper -> removeWallpaper()
+            R.id.calendarWidget -> removeCalendarWidget()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = true)
             R.id.swipeLeftApp -> toggleSwipeLeft()
             R.id.swipeRightApp -> toggleSwipeRight()
@@ -181,6 +220,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         // binding.homeButtonRecents.setOnClickListener(this)
         binding.homeAppsNum.setOnClickListener(this)
         binding.screenTimeOnOff.setOnClickListener(this)
+        binding.calendarWidget.setOnClickListener(this)
+        binding.calendarWidget.setOnLongClickListener(this)
         binding.dailyWallpaperUrl.setOnClickListener(this)
         binding.dailyWallpaper.setOnClickListener(this)
         binding.alignment.setOnClickListener(this)
@@ -589,6 +630,55 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
     private fun populateBoldFont() {
         binding.boldFont.text = getString(if (prefs.boldFont) R.string.on else R.string.off)
+    }
+
+    private fun populateCalendarWidget() {
+        val context = context ?: return
+        val info = HomeWidgetHost.providerInfo(context, prefs.homeWidgetId)
+        binding.calendarWidget.text =
+            if (info == null) getString(R.string.off)
+            else info.loadLabel(context.packageManager)
+    }
+
+    /** Opens the system widget picker; the chosen widget (e.g. Calendar's day view) goes on the home screen. */
+    private fun pickCalendarWidget() {
+        val context = context ?: return
+        val widgetId = HomeWidgetHost.get(context).allocateAppWidgetId()
+        pendingWidgetId = widgetId
+        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        try {
+            pickWidget.launch(intent)
+        } catch (e: Exception) {
+            discardPendingWidget(widgetId)
+            context.showToast(getString(R.string.widget_picker_unavailable))
+        }
+    }
+
+    private fun saveCalendarWidget(widgetId: Int) {
+        val context = context ?: return
+        val previous = prefs.homeWidgetId
+        if (previous != HomeWidgetHost.NO_WIDGET && previous != widgetId) HomeWidgetHost.delete(context, previous)
+        prefs.homeWidgetId = widgetId
+        pendingWidgetId = HomeWidgetHost.NO_WIDGET
+        populateCalendarWidget()
+        viewModel.refreshHome(false)
+    }
+
+    private fun discardPendingWidget(widgetId: Int) {
+        context?.let { HomeWidgetHost.delete(it, widgetId) }
+        pendingWidgetId = HomeWidgetHost.NO_WIDGET
+    }
+
+    private fun removeCalendarWidget() {
+        val context = context ?: return
+        val widgetId = prefs.homeWidgetId
+        if (widgetId == HomeWidgetHost.NO_WIDGET) return
+        HomeWidgetHost.delete(context, widgetId)
+        prefs.homeWidgetId = HomeWidgetHost.NO_WIDGET
+        populateCalendarWidget()
+        viewModel.refreshHome(false)
+        context.showToast(getString(R.string.widget_removed))
     }
 
     private fun populateScreenTimeOnOff() {
