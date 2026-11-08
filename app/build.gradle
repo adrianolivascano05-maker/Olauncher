@@ -17,16 +17,33 @@ android {
         applicationId "app.olauncher"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 117
+        // CI passes a growing number so every build installs as an update
+        versionCode((System.getenv("VERSION_CODE") ?: "117").toInteger())
         versionName "v6.11.5"
 
         resourceConfigurations += ["en", "ar", "cs", "da", "de", "el", "es-rES", "es-rUS", "fa", "fi", "fr", "iw", "hi", "hr", "hu", "in", "it", "ja", "ko", "nb", "nl", "pl", "pt-rBR", "ro", "ru-rRU", "sv", "th", "tr", "uk", "vi", "zh", "zh-rTW"]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Personal release key, provided by CI from repository secrets (never committed)
+    signingConfigs {
+        release {
+            def ks = System.getenv("KEYSTORE_FILE")
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             debuggable false
+            // Own package name, so it never clashes with Olauncher from the Play Store
+            applicationIdSuffix ".personal"
+            if (System.getenv("KEYSTORE_FILE")) signingConfig signingConfigs.release
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -61,9 +78,6 @@ dependencies {
 
     // Navigation
     implementation libs.navigation.fragment.ktx
-
-    // Work Manager
-    implementation libs.work.runtime.ktx
 
     //Material dependency
     implementation libs.material

@@ -153,9 +153,10 @@ class Prefs(context: Context) {
         get() = prefs.getBoolean(KEYBOARD_MESSAGE, false)
         set(value) = prefs.edit { putBoolean(KEYBOARD_MESSAGE, value).apply() }
 
+    /** Daily wallpaper needs the network, which this build does not have: always off. */
     var dailyWallpaper: Boolean
-        get() = prefs.getBoolean(DAILY_WALLPAPER, false)
-        set(value) = prefs.edit { putBoolean(DAILY_WALLPAPER, value).apply() }
+        get() = false
+        set(@Suppress("UNUSED_PARAMETER") value) {}
 
     var dailyWallpaperUrl: String
         get() = prefs.getString(DAILY_WALLPAPER_URL, "").toString()

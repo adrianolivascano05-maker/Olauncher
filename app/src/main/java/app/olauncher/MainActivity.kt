@@ -202,7 +202,6 @@ class MainActivity : AppCompatActivity() {
         AppCompatDelegate.setDefaultNightMode(prefs.appTheme)
         if (prefs.dailyWallpaper && AppCompatDelegate.getDefaultNightMode() == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) {
             setPlainWallpaper()
-            viewModel.setWallpaperWorker()
             recreate()
         }
     }
@@ -229,11 +228,7 @@ class MainActivity : AppCompatActivity() {
                 Constants.Dialog.WALLPAPER -> {
                     prefs.wallpaperMsgShown = true
                     prefs.userState = Constants.UserState.REVIEW
-                    showMessage(R.string.did_you_know, R.string.wallpaper_message, R.string.enable) {
-                        prefs.dailyWallpaper = true
-                        viewModel.setWallpaperWorker()
-                        showToast(getString(R.string.your_wallpaper_will_update_shortly))
-                    }
+                    // Daily wallpaper is not available in this build (no network access)
                 }
 
                 Constants.Dialog.REVIEW -> {
@@ -315,10 +310,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             Constants.UserState.WALLPAPER -> {
-                if (prefs.wallpaperMsgShown || prefs.dailyWallpaper)
-                    prefs.userState = Constants.UserState.REVIEW
-                else if (isOlauncherDefault(this))
-                    viewModel.showDialog.postValue(Constants.Dialog.WALLPAPER)
+                // No daily wallpaper offer in this build: go straight on
+                prefs.userState = Constants.UserState.REVIEW
             }
 
             Constants.UserState.REVIEW -> {

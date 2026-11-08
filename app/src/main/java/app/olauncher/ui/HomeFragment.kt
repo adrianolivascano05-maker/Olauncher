@@ -190,7 +190,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             if (it != true) {
                 if (prefs.dailyWallpaper && prefs.appTheme == AppCompatDelegate.MODE_NIGHT_YES) {
                     prefs.dailyWallpaper = false
-                    viewModel.cancelWallpaperWorker()
                 }
                 prefs.homeBottomAlignment = false
                 setHomeAlignment()
@@ -647,7 +646,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         prefs.appTheme = changedAppTheme
         if (prefs.dailyWallpaper) {
             setPlainWallpaperByTheme(requireContext(), changedAppTheme)
-            viewModel.setWallpaperWorker()
         }
         requireActivity().recreate()
     }
@@ -724,10 +722,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             override fun onDoubleClick() {
                 super.onDoubleClick()
                 if (!prefs.lockModeOn) return
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-                    binding.lock.performClick()
-                else
-                    lockPhone()
+                // Device admin lock on every version: no accessibility service in this build
+                lockPhone()
             }
 
             override fun onClick() {

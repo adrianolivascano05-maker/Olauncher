@@ -36,7 +36,6 @@ import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.createDialog
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.hideStatusBar
-import app.olauncher.helper.isAccessServiceEnabled
 import app.olauncher.helper.isDarkThemeOn
 import app.olauncher.helper.isEinkDisplay
 import app.olauncher.helper.isOlauncherDefault
@@ -197,13 +196,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = true)
             R.id.swipeLeftApp -> toggleSwipeLeft()
             R.id.swipeRightApp -> toggleSwipeRight()
-            R.id.toggleLock -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                // Turning the service off needs no disclosure, turning it on does
-                if (isAccessServiceEnabled(requireContext()))
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                else
-                    showAccessibilityDialog()
-            }
         }
         return true
     }
@@ -341,24 +333,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         showDialog(dialog)
     }
 
-    // Play policy: prominent disclosure and an explicit Accept before sending the user to
-    // accessibility settings. Not now, the close icon, back or tapping outside never count as consent.
-    private fun showAccessibilityDialog() {
-        showDialog(
-            requireContext().createDialog(
-                title = R.string.accessibility_permission,
-                action = R.string.accept,
-                message = R.string.accessibility_disclosure,
-                neutral = R.string.not_now,
-                onAction = { openAccessibilityService() },
-            ) { container ->
-                DialogNotWorkingBinding.inflate(layoutInflater, container, false).root.apply {
-                    setOnClickListener { requireContext().openUrl(Constants.URL_DOUBLE_TAP) }
-                }
-            }
-        )
-    }
-
     private fun toggleSwipeLeft() {
         prefs.swipeLeftEnabled = !prefs.swipeLeftEnabled
         if (prefs.swipeLeftEnabled) {
@@ -425,39 +399,23 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     }
 
     private fun checkAdminPermission() {
-        val isAdmin: Boolean = deviceManager.isAdminActive(componentName)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P)
-            prefs.lockModeOn = isAdmin
+        prefs.lockModeOn = deviceManager.isAdminActive(componentName)
     }
 
-    private fun openAccessibilityService() {
-        // prefs.lockModeOn = true
-        populateLockSettings()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
+    // Double tap to lock uses device admin on every Android version (no accessibility service)
     private fun toggleLockMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            if (!prefs.lockModeOn && !isAccessServiceEnabled(requireContext())) {
-                showAccessibilityDialog()
-                return
-            }
-            prefs.lockModeOn = !prefs.lockModeOn
+        val isAdmin: Boolean = deviceManager.isAdminActive(componentName)
+        if (isAdmin) {
+            removeActiveAdmin("Admin permission removed.")
+            prefs.lockModeOn = false
         } else {
-            val isAdmin: Boolean = deviceManager.isAdminActive(componentName)
-            if (isAdmin) {
-                removeActiveAdmin("Admin permission removed.")
-                prefs.lockModeOn = false
-            } else {
-                val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                intent.putExtra(
-                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    getString(R.string.admin_permission_message)
-                )
-                requireActivity().startActivityForResult(intent, Constants.REQUEST_CODE_ENABLE_ADMIN)
-            }
+            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
+            intent.putExtra(
+                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                getString(R.string.admin_permission_message)
+            )
+            requireActivity().startActivityForResult(intent, Constants.REQUEST_CODE_ENABLE_ADMIN)
         }
         populateLockSettings()
     }
@@ -482,7 +440,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         if (!prefs.dailyWallpaper) return
         prefs.dailyWallpaper = false
         populateWallpaperText()
-        viewModel.cancelWallpaperWorker()
     }
 
     private fun toggleDailyWallpaperUpdate() {
@@ -492,10 +449,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         }
         prefs.dailyWallpaper = !prefs.dailyWallpaper
         populateWallpaperText()
-        if (prefs.dailyWallpaper) {
-            viewModel.setWallpaperWorker()
-            showWallpaperToasts()
-        } else viewModel.cancelWallpaperWorker()
+        if (prefs.dailyWallpaper) showWallpaperToasts()
     }
 
     private fun showWallpaperToasts() {
@@ -593,7 +547,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         if (AppCompatDelegate.getDefaultNightMode() == theme) return
         if (prefs.dailyWallpaper) {
             setPlainWallpaper(theme)
-            viewModel.setWallpaperWorker()
         }
         requireActivity().recreate()
     }
@@ -694,8 +647,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     }
 
     private fun populateWallpaperText() {
-        if (prefs.dailyWallpaper) binding.dailyWallpaper.text = getString(R.string.on)
-        else binding.dailyWallpaper.text = getString(R.string.off)
+        // No network in this build, so the daily wallpaper row is hidden
+        (binding.dailyWallpaper.parent as? View)?.visibility = View.GONE
     }
 
     private fun updateHomeBottomAlignment() {
@@ -734,17 +687,10 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     // }
 
     private fun populateLockSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            binding.toggleLock.text = getString(
-                if (prefs.lockModeOn && isAccessServiceEnabled(requireContext())) R.string.on
-                else R.string.off
-            )
-        } else {
-            binding.toggleLock.text = getString(
-                if (prefs.lockModeOn) R.string.on
-                else R.string.off
-            )
-        }
+        binding.toggleLock.text = getString(
+            if (prefs.lockModeOn && deviceManager.isAdminActive(componentName)) R.string.on
+            else R.string.off
+        )
     }
 
     private fun populateSwipeApps() {

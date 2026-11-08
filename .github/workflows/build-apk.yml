@@ -1,7 +1,9 @@
-name: Build debug APK
+name: Build personal APK
 
 on:
   push:
+    branches-ignore:
+      - apk
   workflow_dispatch:
 
 jobs:
@@ -18,14 +20,43 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build
-        run: ./gradlew --no-daemon assembleDebug
+      # The personal signing key lives only in the repository secrets
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Missing KEYSTORE_BASE64 or KEYSTORE_PASSWORD secret: add both under Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: olauncher-debug
-          path: app/build/outputs/apk/debug/*.apk
+      - name: Build signed release
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.p12
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: olauncher
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          export VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/olauncher-personal.apk"
+
+      # Refuse to ship an APK that can reach the network or read the screen
+      - name: Check permissions and signature
+        run: |
+          apk="$RUNNER_TEMP/olauncher-personal.apk"
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "Permissions in the APK:"
+          "$bt/aapt2" dump permissions "$apk" | tee "$RUNNER_TEMP/perms.txt"
+          if grep -q "android.permission.INTERNET" "$RUNNER_TEMP/perms.txt"; then
+            echo "::error::The APK requests INTERNET"; exit 1
+          fi
+          if "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk" | grep -q "BIND_ACCESSIBILITY_SERVICE"; then
+            echo "::error::The APK declares an accessibility service"; exit 1
+          fi
+          "$bt/apksigner" verify --print-certs "$apk" | grep -E "Signer #1 certificate (DN|SHA-256)"
 
       # Also keep the APK on the "apk" branch, so it can be fetched with git (no Actions UI needed)
       - name: Publish APK to the apk branch
@@ -33,13 +64,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          apk=$(ls app/build/outputs/apk/debug/*.apk | head -1)
           out=$(mktemp -d)
-          cp "$apk" "$out/olauncher-${GITHUB_REF_NAME}-debug.apk"
+          cp "$RUNNER_TEMP/olauncher-personal.apk" "$out/"
           cd "$out"
           git init -q -b apk
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -q -m "Debug APK from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
+          git commit -q -m "Personal APK from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7} (versionCode $((1000 + GITHUB_RUN_NUMBER)))"
           git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: olauncher-personal
+          path: ${{ runner.temp }}/olauncher-personal.apk
